@@ -1,3 +1,4 @@
+from math import (ceil,)
 from collections import OrderedDict
 
 from django.core.paginator import InvalidPage
@@ -8,6 +9,8 @@ from rest_framework.pagination import (
     PageNumberPagination, LimitOffsetPagination
 )
 
+from django.conf import settings
+
 try:
     from django.utils import six
     text_type = six.text_type  # pragma: no cover
@@ -17,7 +20,10 @@ except ImportError:
 from .utils import get_param
 
 
+
+
 class DatatablesMixin(object):
+
     def get_paginated_response(self, data):
         if not self.is_datatable_request:
             return super(DatatablesMixin, self).get_paginated_response(data)
@@ -153,3 +159,80 @@ class DatatablesOnlyPageNumberPagination(DatatablesPageNumberPagination):
             return None
         else:
             return super().paginate_queryset(queryset, request, view)
+        
+
+class TabulatorPageNumberPagination(DatatablesMixin, PageNumberPagination):
+    def get_paginated_response(self, data):
+        if not self.is_datatable_request:
+            return super(TabulatorPageNumberPagination, self).get_paginated_response(data)
+
+        return Response(OrderedDict([
+            ('last_page', self.last_page),
+            ('recordsTotal', self.total_count),
+            ('recordsFiltered', self.count),
+            ('data', data)
+        ]))    
+    
+    def get_page_size(self, request):
+        if self.page_size_query_param:
+            try:
+                size = int(get_param(request, self.page_size_query_param))
+                if size <= 0:
+                    raise ValueError()
+                if self.max_page_size is not None:
+                    return min(size, self.max_page_size)
+                return size
+            except (ValueError, TypeError):
+                pass
+        return self.page_size
+
+    def get_page(self, request, page_size):
+        try:
+            start = int(get_param(request, self.page_query_param, 0))
+            return int(start / page_size) + 1
+        except ValueError:
+            return None
+
+    def paginate_queryset(self, queryset, request, view=None):
+        if request.accepted_renderer.format != 'datatables':
+            self.is_datatable_request = False
+            return super(
+                DatatablesPageNumberPagination, self
+            ).paginate_queryset(queryset, request, view)
+
+        self.page_query_param = 'start'
+        self.page_size_query_param = 'length'
+        length = get_param(request, self.page_size_query_param)
+
+        if length == '-1':
+            return None
+        self.count, self.total_count = self.get_count_and_total_count(
+            queryset, view
+        )
+        self.is_datatable_request = True
+        page_size = self.get_page_size(request)
+        if not page_size:  # pragma: no cover
+            return None
+
+        class CachedCountPaginator(self.django_paginator_class):
+            def __init__(self, value, *args, **kwargs):
+                self.value = value
+                super(CachedCountPaginator, self).__init__(*args, **kwargs)
+
+            @property
+            def count(self):
+                return self.value
+
+        paginator = CachedCountPaginator(self.count, queryset, page_size)
+        page_number = self.get_page(request, page_size)
+        self.last_page = math.ceil( float(self.count)/float(page_size) )
+
+        try:
+            self.page = paginator.page(page_number)
+        except InvalidPage as exc:
+            msg = self.invalid_page_message.format(
+                page_number=page_number, message=text_type(exc)
+            )
+            raise NotFound(msg)
+        self.request = request
+        return list(self.page)
