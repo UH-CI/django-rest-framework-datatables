@@ -161,6 +161,12 @@ class DatatablesOnlyPageNumberPagination(DatatablesPageNumberPagination):
             return super().paginate_queryset(queryset, request, view)
         
 
+class PageNumberPaginationSelector(PageNumberPagination):
+
+
+
+
+
 class TabulatorPageNumberPagination(DatatablesMixin, PageNumberPagination):
     def get_paginated_response(self, data):
         if not self.is_datatable_request:
@@ -188,6 +194,8 @@ class TabulatorPageNumberPagination(DatatablesMixin, PageNumberPagination):
 
     def get_page(self, request, page_size):
         try:
+            if get_param(request,"page", None) != None:
+                return  max(1, int(get_param(request,"page", 1)))          
             start = int(get_param(request, self.page_query_param, 0))
             return int(start / page_size) + 1
         except ValueError:
@@ -224,8 +232,14 @@ class TabulatorPageNumberPagination(DatatablesMixin, PageNumberPagination):
                 return self.value
 
         paginator = CachedCountPaginator(self.count, queryset, page_size)
+        if get_param(request, "page", None) != None:
+            page_number = int(get_param(request, "page", 1))
+        else:
+            page_number = self.get_page(request, page_size)
+
+
         page_number = self.get_page(request, page_size)
-        self.last_page = math.ceil( float(self.count)/float(page_size) )
+        self.last_page = ceil( float(self.count)/float(page_size) )
 
         try:
             self.page = paginator.page(page_number)

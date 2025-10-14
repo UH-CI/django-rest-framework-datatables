@@ -51,6 +51,30 @@ class DatatablesBaseFilterBackend(BaseFilterBackend):
         fields = []
         i = 0
         while True:
+            name  = get_param(request, f"sort[{i}][field]" , None)
+            direction = get_param(request, f"sort[{i}][dir]" , None)
+            if not name:
+                break
+            i += 1
+            # to be able to search across multiple fields (e.g. to search
+            # through concatenated names), we create a list of the name field,
+            # replacing dot notation with double-underscores and splitting
+            # along the commas.
+            field = {
+                'name': "".join([
+                    n.lstrip() for n in name.replace('.', '__').split(',')
+                ]),
+                'data': None,
+                'dir': direction,
+                'searchable': False,
+                'orderable': True,
+                'search_value': None,
+                'search_regex': None,
+            }
+            fields.append(field)
+
+        i = 0
+        while True:
             col = 'columns[%d][%s]'
             data = get_param(request, col % (i, 'data'))
             if data == "":  # null or empty string on datatables (JS) side
@@ -224,4 +248,14 @@ class DatatablesFilterBackend(DatatablesBaseFilterBackend):
                 field['name'][0]
             ))
         self.append_additional_ordering(ordering, view)
+        for field in fields:
+            d = field.get('dir', None)
+            if not d:
+                continue
+            if  d == 'desc':
+                order = "-"
+            else:
+                order = ""
+            ordering.append(f"{order}{field['name']}")
+
         return ordering
