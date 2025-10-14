@@ -259,3 +259,122 @@ class DatatablesFilterBackend(DatatablesBaseFilterBackend):
             ordering.append(f"{order}{field['name']}")
 
         return ordering
+
+
+
+class TabulatorBaseFilterBackend(BaseFilterBackend):
+    """Base class for definining your own TabulatorFilterBackend classes"""
+
+    def check_renderer_format(self, request):
+        return request.accepted_renderer.format == 'datatables'
+
+    def get_fields(self, request):
+        """called by parse_query_params to get the list of fields"""
+        fields = []
+        i = 0
+        while True:
+            name  = get_param(request, f"sort[{i}][field]" , None)
+            direction = get_param(request, f"sort[{i}][dir]" , None)
+            typ = get_param(request, f"sort[{i}][type]" , None)
+            val = get_param(request, f"sort[{i}][value]" , None)
+            if not name:
+                break
+            i += 1
+            # to be able to search across multiple fields (e.g. to search
+            # through concatenated names), we create a list of the name field,
+            # replacing dot notation with double-underscores and splitting
+            # along the commas.
+            field = {
+                'name': "".join([
+                    n.lstrip() for n in name.replace('.', '__').split(',')
+                ]),
+                'dir': direction,
+                'type': typ,
+                'value': val,
+            }
+            fields.append(field)
+        return fields
+
+    def set_count_before(self, view, total_count):
+        # set the queryset count as an attribute of the view for later
+        # TODO: find a better way than this hack
+        setattr(view, '_datatables_total_count', total_count)
+
+    def set_count_after(self, view, filtered_count):
+        """called by filter_queryset to store the ordering after the filter
+        operations
+
+        """
+        # set the queryset count as an attribute of the view for later
+        # TODO: maybe find a better way than this hack ?
+        setattr(view, '_datatables_filtered_count', filtered_count)
+
+    def append_additional_ordering(self, ordering, view):
+        if len(ordering):
+            if hasattr(view, 'datatables_additional_order_by'):
+                additional = view.datatables_additional_order_by
+                # Django will actually only take the first occurrence if the
+                # same column is added multiple times in an order_by, but it
+                # feels cleaner to double check for duplicate anyway.
+                if not any((o[1:] if o[0] == '-' else o) == additional
+                           for o in ordering):
+                    ordering.append(additional)
+
+
+class TabulatorFilterBackend(TabulatorBaseFilterBackend):
+    def filter_queryset(self, request, queryset, view):
+        if not self.check_renderer_format(request):
+            return queryset
+
+        total_count = view.get_queryset().count()
+        self.set_count_before(view, total_count)
+
+        if len(getattr(view, 'filter_backends', [])) > 1:
+            # case of a view with more than 1 filter backend
+            filtered_count_before = queryset.count()
+        else:
+            filtered_count_before = total_count
+
+        fields = self.get_fields(request)
+        order_by = []
+        def is_equal(lbl, val, *args, **kwargs):
+            return Q(**{lbl:val})
+        def is_not (lbl,val, func, *args, **kwargs):
+            return ~is_equal(lbl,val)
+        def is_like(lbl, val, *args, **kwargs):
+            return Q(**{f"{lbl}__icontains": val})
+        def starts_with(lbl, val, *args, **kwargs):
+            return Q(**{ f"{lbl}__istartswith": val})
+        def ends_with(lbl, val, *args, **kwargs):
+            return Q(**{ f"{lbl}__iendswith": val})
+        
+        switch = {"=": is_equal,
+         "!=": is_not,
+         "like": is_like,
+         "starts": starts_with,
+         "ends": ends_with,
+         }
+        order_map = {"desc": "-", "asc": ""}
+        q = Q()
+        ordering = []
+        self.append_additional_ordering(ordering, view)
+        for f in fields:
+            d = f.get('dir', None)
+            if d:
+                order = order_map.get(d, "")
+                ordering.append(f"{order}{f['name']}")
+            cmd = switch.get(f['type'], None)
+            if cmd:
+                q &= cmd(f['name'], f['value'] )
+        if q:
+            queryset = queryset.filter(q).distinct()
+            filtered_count = queryset.count()
+        else:
+            filtered_count = filtered_count_before
+
+        self.set_count_after(view, filtered_count)
+        if ordering:
+            queryset = queryset.order_by(*ordering)
+
+        return queryset
+

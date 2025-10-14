@@ -161,39 +161,30 @@ class DatatablesOnlyPageNumberPagination(DatatablesPageNumberPagination):
             return super().paginate_queryset(queryset, request, view)
 
 
-class TabulatorPageNumberPagination(DatatablesMixin, PageNumberPagination):
+class TabulatorPageNumberPagination(PageNumberPagination):
+    def get_count_and_total_count(self, queryset, view):
+        if hasattr(view, '_datatables_filtered_count'):
+            count = view._datatables_filtered_count
+            del view._datatables_filtered_count
+        else:  # pragma: no cover
+            count = queryset.count()
+        if hasattr(view, '_datatables_total_count'):
+            total_count = view._datatables_total_count
+            del view._datatables_total_count
+        else:  # pragma: no cover
+            total_count = count
+        return count, total_count
+
+
     def get_paginated_response(self, data):
         if not self.is_datatable_request:
             return super(TabulatorPageNumberPagination, self).get_paginated_response(data)
 
         return Response(OrderedDict([
             ('last_page', self.last_page),
-            ('recordsTotal', self.total_count),
-            ('recordsFiltered', self.count),
             ('data', data)
         ]))    
     
-    def get_page_size(self, request):
-        if self.page_size_query_param:
-            try:
-                size = int(get_param(request, self.page_size_query_param))
-                if size <= 0:
-                    raise ValueError()
-                if self.max_page_size is not None:
-                    return min(size, self.max_page_size)
-                return size
-            except (ValueError, TypeError):
-                pass
-        return self.page_size
-
-    def get_page(self, request, page_size):
-        try:
-            if get_param(request,"page", None) != None:
-                return  max(1, int(get_param(request,"page", 1)))          
-            start = int(get_param(request, self.page_query_param, 0))
-            return int(start / page_size) + 1
-        except ValueError:
-            return None
 
     def paginate_queryset(self, queryset, request, view=None):
         if request.accepted_renderer.format != 'datatables':
@@ -211,8 +202,10 @@ class TabulatorPageNumberPagination(DatatablesMixin, PageNumberPagination):
         self.count, self.total_count = self.get_count_and_total_count(
             queryset, view
         )
+
+
         self.is_datatable_request = True
-        page_size = self.get_page_size(request)
+        page_size = self.page_size
         if not page_size:  # pragma: no cover
             return None
 
@@ -226,15 +219,8 @@ class TabulatorPageNumberPagination(DatatablesMixin, PageNumberPagination):
                 return self.value
 
         paginator = CachedCountPaginator(self.count, queryset, page_size)
-        if get_param(request, "page", None) != None:
-            page_number = int(get_param(request, "page", 1))
-        else:
-            page_number = self.get_page(request, page_size)
-
-
-        page_number = self.get_page(request, page_size)
+        page_number = int(get_param(request, "page", 1))
         self.last_page = ceil( float(self.count)/float(page_size) )
-
         try:
             self.page = paginator.page(page_number)
         except InvalidPage as exc:
