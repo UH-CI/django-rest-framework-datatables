@@ -181,11 +181,12 @@ class TabulatorPageNumberPagination(PageNumberPagination):
             return super(TabulatorPageNumberPagination, self).get_paginated_response(data)
 
         return Response(OrderedDict([
+            ('recordsTotal', self.total_count),
+            ('recordsFiltered', self.count),
             ('last_page', self.last_page),
             ('data', data)
         ]))    
     
-
     def paginate_queryset(self, queryset, request, view=None):
         if request.accepted_renderer.format != 'datatables':
             self.is_datatable_request = False
