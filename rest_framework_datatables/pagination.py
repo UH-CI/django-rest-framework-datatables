@@ -159,12 +159,6 @@ class DatatablesOnlyPageNumberPagination(DatatablesPageNumberPagination):
             return None
         else:
             return super().paginate_queryset(queryset, request, view)
-        
-
-class PageNumberPaginationSelector(PageNumberPagination):
-
-
-
 
 
 class TabulatorPageNumberPagination(DatatablesMixin, PageNumberPagination):
