@@ -293,7 +293,7 @@ class TabulatorBaseFilterBackend(BaseFilterBackend):
                 'value': val,
             }
             fields[name] = field
-
+        i = 0
         while True:
             name  = get_param(request, f"filter[{i}][field]" , None)
             typ = get_param(request, f"filter[{i}][type]" , None)
