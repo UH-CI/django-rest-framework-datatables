@@ -270,7 +270,7 @@ class TabulatorBaseFilterBackend(BaseFilterBackend):
 
     def get_fields(self, request):
         """called by parse_query_params to get the list of fields"""
-        fields = []
+        fields = {}
         i = 0
         while True:
             name  = get_param(request, f"sort[{i}][field]" , None)
@@ -292,7 +292,34 @@ class TabulatorBaseFilterBackend(BaseFilterBackend):
                 'type': typ,
                 'value': val,
             }
-            fields.append(field)
+            fields[name] = field
+
+        while True:
+            name  = get_param(request, f"filter[{i}][field]" , None)
+            typ = get_param(request, f"filter[{i}][type]" , None)
+            val = get_param(request, f"filter[{i}][value]" , None)
+            if not name:
+                break
+            i += 1
+            # to be able to search across multiple fields (e.g. to search
+            # through concatenated names), we create a list of the name field,
+            # replacing dot notation with double-underscores and splitting
+            # along the commas.
+            if name in fields:
+                fields[name]["type"] = typ
+                fields[name]["value"] = val
+            else:
+
+                field = {
+                    'name': "".join([
+                        n.lstrip() for n in name.replace('.', '__').split(',')
+                    ]),
+                    'dir': None,
+                    'type': typ,
+                    'value': val,
+                }
+                fields[name] = field
+        flist = [v for k,v  in fields.items()]
         return fields
 
     def set_count_before(self, view, total_count):
