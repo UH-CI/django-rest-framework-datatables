@@ -385,7 +385,7 @@ class TabulatorFilterBackend(TabulatorBaseFilterBackend):
         q = Q()
         ordering = []
         self.append_additional_ordering(ordering, view)
-        for f in fields:
+        for k,f in fields.items():
             d = f.get('dir', None)
             if d:
                 order = order_map.get(d, "")
