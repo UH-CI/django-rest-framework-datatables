@@ -191,7 +191,7 @@ class TabulatorPageNumberPagination(PageNumberPagination):
         if request.accepted_renderer.format != 'datatables':
             self.is_datatable_request = False
             return super(
-                DatatablesPageNumberPagination, self
+                TabulatorPageNumberPagination, self
             ).paginate_queryset(queryset, request, view)
 
         self.page_query_param = 'start'
